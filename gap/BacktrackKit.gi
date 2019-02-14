@@ -152,7 +152,7 @@ end;
 #!
 #! @Arguments state, tracer, rbase
 #! @Returns <K>true</K> or <K>false</K>.
-BTKit_FirstFixedPoint := function(state, tracer, rbase)
+BTKit_FirstStablePoint := function(state, tracer, rbase)
     return BTKit_InitialiseConstraints(state, tracer, rbase) and
            BTKit_RefineConstraints(state, tracer, rbase);
 end;
@@ -194,7 +194,7 @@ InstallGlobalFunction( BTKit_BuildRBase,
         # partition stack as far as possible, to reach a stable point:
         # this is essentially reaching the root node of the search tree.
         # Record the trace into rbase.root.tracer.
-        BTKit_FirstFixedPoint(state, tracer, true);
+        BTKit_FirstStablePoint(state, tracer, true);
 
         # Continue building the RBase until a discrete partition is reached.
         while PS_Cells(state.ps) <> PS_Points(state.ps) do
@@ -205,13 +205,13 @@ InstallGlobalFunction( BTKit_BuildRBase,
             branchCell := branchselector(state.ps);
             branchPos := Minimum(PS_CellSlice(state.ps, branchCell));
             tracer := RecordingTracer();
+            PS_SplitCellByFunction(state.ps, tracer, branchCell, {x} -> (x = branchPos));
+            BTKit_RefineConstraints(state, tracer, true);
             # Record the info from this step of construction in rbase.branches.
             Add(rbase.branches, rec(cell   := branchCell,
                                     pos    := branchPos,
                                     tracer := tracer
                                    ));
-            PS_SplitCellByFunction(state.ps, tracer, branchCell, {x} -> (x = branchPos));
-            BTKit_RefineConstraints(state, tracer, true);
             Info(InfoBTKit, 2, "RBase level: ", PS_AsPartition(state.ps));
         od;
 
@@ -283,7 +283,7 @@ InstallGlobalFunction( BTKit_Backtrack,
     vals := Set(PS_CellSlice(state.ps, branchInfo.cell));
     Info(InfoBTKit, 1,
          StringFormatted("Branching at depth {}: {}", depth, branchInfo));
-    Print("\>");
+
     # A node is special if its parent is special, and it is the first one
     # amongst its siblings. If we find a solution at some node, we immediately
     # return to the deepest special node above that node.
@@ -309,11 +309,12 @@ InstallGlobalFunction( BTKit_Backtrack,
         # If this gave a solution, we return to the deepest special node above.
         # here. If the current node is special, then we are already here, and we
         # should just continue; if the parent node is special, then...
+        # TODO why don't we return when the parent node is special?
         if found and (find_single or not parent_special) then
             Print("\<");
             return true;
         fi;
-        special := false;
+        special := false; # At most the 1st element in vals can be special.
     od;
     Print("\<");
     return false;
@@ -329,7 +330,7 @@ InstallGlobalFunction( BTKit_SimpleSearch,
         perms := [ Group(()), [] ];
 
         tracer := FollowingTracer(rbase.root.tracer);
-        if BTKit_FirstFixedPoint(state, tracer, false) then
+        if BTKit_FirstStablePoint(state, tracer, false) then
             BTKit_Backtrack(state, rbase, 1, perms, true, false);
         fi;
         BTKit_RestoreState(state, saved);
@@ -347,7 +348,7 @@ InstallGlobalFunction( BTKit_SimpleSinglePermSearch,
         perms := [ Group(()), [] ];
 
         tracer := FollowingTracer(rbase.root.tracer);
-        if BTKit_FirstFixedPoint(state, tracer, false) then
+        if BTKit_FirstStablePoint(state, tracer, false) then
             BTKit_Backtrack(state, rbase, 1, perms, true, true);
         fi;
 
